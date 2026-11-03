@@ -15,7 +15,31 @@ dialog.move-map-modal{width:min(1250px,96vw);max-height:94vh;overflow:auto}.move
 .material-editor{background:#f6fafc;border:1px solid #dce8ef;border-radius:10px;padding:17px;margin:15px 0}.material-editor h3{margin:0 0 15px}.material-editor button{width:100%}#draft-materials{margin:20px 0}.content-line{border-bottom:1px solid #edf2f5;padding:7px 0}.content-line:last-child{border:0}.content-line span{color:#00848e;font-size:12px}.pallet-actions{display:flex;flex-direction:column;gap:7px;min-width:175px}.pallet-actions button{text-align:left;font-size:11px}.pick-units{min-width:105px;max-width:150px}.delivery-card{border:1px solid #e1e9ee;border-radius:10px;padding:16px;margin:14px 0}.operation-link{font-size:10px;white-space:nowrap;padding:5px 7px;border-color:#d3e5e9}.content-line .pill{font-size:10px}@media(max-width:650px){.pallet-actions{min-width:150px}.material-editor{padding:12px}.pick-units{min-width:85px}}
 
 .position-fieldset{padding:0;margin:0 0 18px;border:0;min-width:0}.position-fieldset legend{color:#43566b;font-size:13px;margin-bottom:10px;font-weight:600}.position-options{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.position-choice{position:relative;margin:0;cursor:pointer}.position-choice input{position:absolute;opacity:0;width:1px;height:1px;left:14px;top:20px}.position-choice span{display:flex;justify-content:center;align-items:center;min-height:64px;background:#f9fcfe;border:2px solid #d7e4ed;border-radius:10px;font-size:25px;font-weight:700;color:#43677a}.position-choice:hover span{border-color:#008d97}.position-choice input:checked+span{color:white;background:#008d97;border-color:#008d97}.position-choice input:focus-visible+span{outline:3px solid #74cdd6;outline-offset:3px}input::-webkit-inner-spin-button,input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}@media(max-width:650px){.position-options{gap:9px}.position-choice span{min-height:60px}}
-.location-label{display:block;color:#49617a;margin-bottom:4px}.rack-obstacle,.rack-obstacle:hover{background:#e5e7eb;color:#374151;border-color:#c5c9ce;display:grid;place-items:center}.location-label{margin:3px 0 0}.movement-location{display:flex;flex-wrap:wrap;gap:8px 12px;min-width:140px}</style>
+.location-label{display:block;color:#49617a;margin-bottom:4px}.rack-obstacle,.rack-obstacle:hover{background:#e5e7eb;color:#374151;border-color:#c5c9ce;display:grid;place-items:center}.location-label{margin:3px 0 0}.movement-location{display:flex;flex-wrap:wrap;gap:8px 12px;min-width:140px}
+aside{overflow-y:auto}
+.material-filters.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));align-items:end}
+.material-filters label,.material-filters input,.material-filters select{min-width:0}
+.rack-board{grid-template-columns:66px repeat(var(--rack-columns),minmax(var(--rack-width),1fr));width:max-content;min-width:100%}
+.rack-level,.rack-board>div:first-child{position:sticky;left:0;z-index:1;background:white}
+.register-short{display:none}
+@media(max-width:650px){
+  .material-filters.row{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .material-filters label:first-child,.material-filters button{grid-column:1/-1}
+  nav{flex-wrap:wrap}
+  nav button{width:auto;min-width:0}
+}
+@media(max-width:650px),(hover:none) and (max-height:650px){
+  .rack-board{grid-template-columns:44px repeat(var(--rack-columns),minmax(clamp(52px,calc(var(--rack-width) * .65),112px),1fr));gap:5px}
+  .rack-cell{min-height:48px}
+  .register-full{display:none}
+  .register-short{display:inline;font-size:20px}
+}
+@media(min-width:651px) and (hover:none) and (max-height:650px){
+  aside{padding:10px 12px}
+  aside .logo{padding-bottom:8px}
+  aside nav button{padding:9px 12px;margin:2px 0}
+}
+</style>
 <aside><div class="logo">Nexora<small>INVENTORY</small></div><nav id="nav"></nav><footer>Nexora · Maqueta local<br>Operador principal<br>NetSuite no conectado</footer></aside><main><header><div><h1 id="title"></h1><p class="sub" id="subtitle"></p></div></header><div id="content"></div></main><dialog id="modal"></dialog><div id="toast" role="status"></div>
 <script id="excel-reader">
 /*!
@@ -80,7 +104,7 @@ function inventory(){
  if(!invWarehouse)return tabs+`<section class="card workflow-gate"><span class="step-number">1</span><h2>¿En qué bodega vas a inventariar?</h2><p>Selecciona una bodega arriba para continuar.</p><span class="small">No hay una bodega seleccionada por defecto.</span></section>`;
  const area=`<div class="section-heading"><div><span class="eyebrow">${esc(invWarehouse)}</span><h2>Zona de inventario</h2></div><div class="segments"><button class="${invArea==='Rack'?'selected':''}" onclick="invArea='Rack';render()">Racks</button><button class="${invArea==='Piso'?'selected':''}" onclick="invArea='Piso';render()">Piso</button></div></div>`;
  if(invArea==='Rack'&&!['N','S'].includes(invOrientation))return tabs+`<section class="card">${area}<div class="orientation-gate"><span class="eyebrow">PASO 2 · ORIENTACIÓN</span><h2>¿En qué lado de ${esc(invWarehouse)} estás?</h2><p class="sub">Elige una orientación para abrir su mapa de ubicaciones.</p><div class="orientation-options"><button class="orientation-option" onclick="chooseInventoryOrientation('N')"><span class="direction-symbol">↑</span><b>NORTE</b><span>Abrir mapa Norte</span></button><button class="orientation-option" onclick="chooseInventoryOrientation('S')"><span class="direction-symbol">↓</span><b>SUR</b><span>Abrir mapa Sur</span></button></div><p class="small">No se selecciona ninguna opción automáticamente.</p></div></section>`;
- return tabs+`<section class="card">${area}${invArea==='Rack'?`<div class="orientation-current"><span><b>${esc(invWarehouse)} · ${invOrientation==='N'?'Norte':'Sur'}</b> · Mapa de ubicaciones</span><button onclick="invOrientation='';invSide='';render()">Cambiar Norte / Sur</button></div><div class="step-line">PASO 3 · Toca una columna y nivel. Al registrar elegirás Adelante o Atrás.</div>${rackBoard()}`:floorBoard()}</section>`;
+ return tabs+`<section class="card">${area}${invArea==='Rack'?`<div class="orientation-current"><span><b>${esc(invWarehouse)} · ${invOrientation==='N'?'Norte':'Sur'}</b> · Mapa de ubicaciones</span><button onclick="invOrientation='';invSide='';render()">Cambiar Norte / Sur</button></div><div class="step-line">PASO 3 · Toca una ubicación para registrar un pallet. Al registrar elegirás Adelante o Atrás.</div>${rackBoard()}`:floorBoard()}</section>`;
 }
 function rackPrefix(c,n){return `${invWarehouse}-${invOrientation}-C${pad2(c)}-N${pad2(n)}-${invSide}-`}
 function rackPallets(c,n){const re=new RegExp('^'+invWarehouse+'-'+invOrientation+'-C'+pad2(c)+'-N'+pad2(n)+'-[AB]-');return db.pallets.filter(p=>re.test(p.location))}
@@ -105,7 +129,7 @@ function checkRack(w,o,c,n){
 }
 function rackGrid(w,o,cell){
  const [columns,levels,width=85]=rackPlan(w,o);
- return `<div class="rack-scroll"><div class="rack-board" style="grid-template-columns:66px repeat(${columns},minmax(${width}px,1fr));min-width:${66+columns*(width+7)}px"><div></div>${Array.from({length:columns},(_,i)=>`<div class="rack-head">C${pad2(i+1)}</div>`).join('')}${Array.from({length:levels},(_,i)=>{
+ return `<div class="rack-scroll"><div class="rack-board" style="--rack-columns:${columns};--rack-width:${width}px"><div></div>${Array.from({length:columns},(_,i)=>`<div class="rack-head">C${pad2(i+1)}</div>`).join('')}${Array.from({length:levels},(_,i)=>{
  const n=levels-i;
  return `<div class="rack-level">N${pad2(n)}</div>`+Array.from({length:columns},(_,j)=>{
  const c=j+1, obstacle=rackObstacle(w,o,c,n);
@@ -118,7 +142,7 @@ function rackBoard(){
  return `<p class="sub">${esc(invWarehouse)} · ${invOrientation==='N'?'Norte':'Sur'} · ${columns} columnas × ${levels} niveles</p>`+
  rackGrid(invWarehouse,invOrientation,(c,n)=>{
  const ps=rackPallets(c,n);
- return `<button class="rack-cell ${ps.length?'recorded':''}" onclick="rackDialog(${c},${n})"><b>${ps.length?ps.length+' pallets':'+ Registrar'}</b></button>`;
+ return `<button class="rack-cell ${ps.length?'recorded':''}" aria-label="${ps.length?ps.length+' pallets':'Registrar pallet'} · Columna ${pad2(c)} · Nivel ${pad2(n)}" onclick="rackDialog(${c},${n})" ><b>${ps.length?ps.length+' pallets':'<span class="register-full">+ Registrar</span><span class="register-short">+</span>'}</b></button>`;
  })+outOfGridNotice();
 }
 
@@ -250,7 +274,7 @@ function locationMatches(location){
 function searchMatch(p){
  return (!warehouse||p.warehouse===warehouse)&&p.items.some(i=>product(i.product)?.code.toLowerCase()===filter.trim().toLowerCase())&&locationMatches(p.location);
 }
-function search(){return `<div class="card"><div class="row"><label>Código<input value="${esc(filter)}" id="query" placeholder="Código del material" oninput="filter=this.value;refreshSearch()"></label><label>Bodega${selectWh('wh')}</label>${rackSearchFields()}<button id="search-filtered-export" onclick="csv(true)" ${!filter.trim()||warehouse==='CENTRAL'?'disabled':''}>CSV filtrado de mis bodegas</button><button onclick="csv()">CSV de todas mis bodegas</button></div><p class="small">${warehouse==='CENTRAL'?'Entregas a Bodega Central: consulta cerrada. Su descarga se hace en Movimientos → Entregas a Bodega Central.':'Un pallet mixto aparece al buscar cualquiera de sus materiales. Se muestra todo su contenido.'}</p><div id="results">${searchResults()}</div></div>`}
+function search(){return `<div class="card"><div class="row material-filters"><label>Código<input value="${esc(filter)}" id="query" placeholder="Código del material" oninput="filter=this.value;refreshSearch()"></label><label>Bodega${selectWh('wh')}</label>${rackSearchFields()}<button id="search-filtered-export" onclick="csv(true)" ${!filter.trim()||warehouse==='CENTRAL'?'disabled':''}>CSV filtrado de mis bodegas</button><button onclick="csv()">CSV de todas mis bodegas</button></div><p class="small">${warehouse==='CENTRAL'?'Entregas a Bodega Central: consulta cerrada. Su descarga se hace en Movimientos → Entregas a Bodega Central.':'Un pallet mixto aparece al buscar cualquiera de sus materiales. Se muestra todo su contenido.'}</p><div id="results">${searchResults()}</div></div>`}
 function searchResults(){if(!filter.trim())return empty('Escribe un código para buscar sus pallets y ubicaciones.');if(warehouse==='CENTRAL')return deliveredRows();const ps=activePallets().filter(searchMatch);return `<p class="sub">${ps.length} pallets físicos · ${num(ps.reduce((s,p)=>s+p.items.length,0))} líneas de material</p>${palletRows(ps)}`}
 function refreshSearch(){$('#results').innerHTML=searchResults();$('#search-filtered-export').disabled=!filter.trim()||warehouse==='CENTRAL'}
 function palletDetail(id){
