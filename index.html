@@ -39,6 +39,12 @@ aside{overflow-y:auto}
   aside .logo{padding-bottom:8px}
   aside nav button{padding:9px 12px;margin:2px 0}
 }
+
+.rack-count{display:grid;place-items:center;font-weight:700}
+.position-blocked{display:none}
+.position-choice.unavailable span{background:#e5e7eb;color:#4b5563;border-color:#d1d5db;flex-direction:column;text-align:center}
+.position-choice.unavailable .position-blocked{display:block;font-size:11px}
+.position-choice:has(input:disabled){cursor:default}
 </style>
 <aside><div class="logo">Nexora<small>INVENTORY</small></div><nav id="nav"></nav><footer>Nexora · Maqueta local<br>Operador principal<br>NetSuite no conectado</footer></aside><main><header><div><h1 id="title"></h1><p class="sub" id="subtitle"></p></div></header><div id="content"></div></main><dialog id="modal"></dialog><div id="toast" role="status"></div>
 <script id="excel-reader">
@@ -88,9 +94,9 @@ const orderedWarehouses=(values=db.warehouses)=>[...values].sort((a,b)=>a==='CEN
 function opts(values,selected){return values.map(x=>`<option value="${esc(x)}" ${x===selected?'selected':''}>${esc(wh(x))}</option>`).join('')}
 function selectWh(id,all=true){return `<select id="${id}" onchange="warehouse=this.value;render()">${all?'<option value="">Mis bodegas · sin Central</option>':''}${opts(orderedWarehouses(),warehouse)}</select>`}
 function empty(s){return `<div class="empty">${s}</div>`}function badge(s,c=''){return `<span class="pill ${c}">${esc(s)}</span>`}
-const tabs=['Resumen','Registrar pallet','Buscar material','Movimientos','Alertas','Configuración'];
-const subtitles={Resumen:'El inventario físico, bajo tu control.','Registrar pallet':'Elige tu bodega y registra directamente sobre el mapa.', 'Buscar material':'Encuentra todas las ubicaciones de un material.',Ubicaciones:'Arrastra un pallet o usa el botón Mover.',Movimientos:'Trazabilidad de entradas, salidas y reacomodos.',Alertas:'Anticípate a la reposición por unidades.',Configuración:'Bodegas, materiales, respaldos e integración futura.'};
-function go(t){tab=t;filter='';warehouse='';if(t==='Movimientos')movementFilters.type='';if(t==='Buscar material')Object.assign(rackSearch,{orientation:'',column:'',level:''});if(t==='Registrar pallet'){invWarehouse='';invOrientation='';invSide='';invArea='Rack';}render()}function render(){ $('#nav').innerHTML=tabs.map((t,i)=>`<button class="${tab===t?'active':''}" onclick="go(tabs[${i}])">${esc(t)}${t==='Alertas'&&alerts().length?' · '+alerts().length:''}</button>`).join('');$('#title').textContent=tab;$('#subtitle').textContent=subtitles[tab]; const views={'Resumen':summary,'Registrar pallet':inventory,'Buscar material':search,'Movimientos':movements,'Alertas':alertView,'Configuración':settings};$('#content').innerHTML=views[tab]();}
+const tabs=['Resumen','Registrar pallet','Visualizar bodega','Buscar material','Movimientos','Alertas','Configuración'];
+const subtitles={'Visualizar bodega':'Consulta la cantidad de pallets por columna y nivel.',Resumen:'El inventario físico, bajo tu control.','Registrar pallet':'Elige tu bodega y registra directamente sobre el mapa.', 'Buscar material':'Encuentra todas las ubicaciones de un material.',Ubicaciones:'Arrastra un pallet o usa el botón Mover.',Movimientos:'Trazabilidad de entradas, salidas y reacomodos.',Alertas:'Anticípate a la reposición por unidades.',Configuración:'Bodegas, materiales, respaldos e integración futura.'};
+function go(t){tab=t;filter='';warehouse='';if(t==='Movimientos')movementFilters.type='';if(t==='Buscar material')Object.assign(rackSearch,{orientation:'',column:'',level:''});if(t==='Registrar pallet'){invWarehouse='';invOrientation='';invSide='';invArea='Rack';}render()}function render(){ $('#nav').innerHTML=tabs.map((t,i)=>`<button class="${tab===t?'active':''}" onclick="go(tabs[${i}])">${esc(t)}${t==='Alertas'&&alerts().length?' · '+alerts().length:''}</button>`).join('');$('#title').textContent=tab;$('#subtitle').textContent=subtitles[tab]; const views={'Resumen':summary,'Registrar pallet':inventory,'Visualizar bodega':warehouseView,'Buscar material':search,'Movimientos':movements,'Alertas':alertView,'Configuración':settings};$('#content').innerHTML=views[tab]();}
 function summary(){return `<div class="summary-stats"><button class="card summary-metric" onclick="go('Buscar material')"><span class="summary-metric-label">Pallets activos</span><strong>${num(activePallets().length)}</strong><span class="summary-metric-note">En tus bodegas · sin entregados a Central</span></button><button class="card summary-metric" onclick="go('Alertas')"><span class="summary-metric-label">Alertas</span><strong>${num(alerts().length)}</strong><span class="summary-metric-note">Materiales en el mínimo o por debajo</span></button></div>`}
 db.warehouses=orderedWarehouses();
 let invWarehouse='',invOrientation='',invSide='',invArea='Rack';
@@ -137,6 +143,32 @@ function rackGrid(w,o,cell){
  }).join('');
  }).join('')}</div></div>`;
 }
+let viewWarehouse='', viewOrientation='';
+function warehouseView(){
+ const warehouses=db.warehouses.filter(w=>w!=='CENTRAL');
+ const warehouseButtons=warehouses.map(w=>`<button ${w==='B04'?'disabled':''} class="${w===viewWarehouse?'selected':''}" onclick="viewWarehouse='${esc(w)}';viewOrientation='';render()">${w==='B04'?'B04 · 🚧':esc(w)}</button>`).join('');
+ const orientationButtons=[['N','Norte'],['S','Sur']].map(([o,label])=>`<button class="${o===viewOrientation?'selected':''}" onclick="viewOrientation='${o}';render()">${label}</button>`).join('');
+ return `<h2>Elige la bodega</h2><div class="warehouse-tabs">${warehouseButtons}</div>`+
+ (viewWarehouse?`<h2>Elige la orientación</h2><div class="warehouse-tabs">${orientationButtons}</div>`:'')+
+ (viewOrientation?`<section class="card"><h2>${esc(viewWarehouse)} · ${viewOrientation==='N'?'Norte':'Sur'}</h2>`+
+ rackGrid(viewWarehouse,viewOrientation,(c,n)=>{
+  const prefix=`${viewWarehouse}-${viewOrientation}-C${pad2(c)}-N${pad2(n)}-`;
+  const count=db.pallets.filter(p=>p.warehouse===viewWarehouse&&p.location.startsWith(prefix)).length;
+  return `<div class="rack-cell rack-count">${count} ${count===1?'pallet':'pallets'}</div>`;
+ })+'</section>':'');
+}
+function rackPositionId(side,position){
+ const q=quickContext;
+ return `${q.warehouse}-${q.orientation}-C${pad2(q.a)}-N${pad2(q.n)}-${side}-${position}`;
+}
+function rackSlotAvailable(data,location){
+ if(data.locations.some(l=>l.id===location&&l.status==='Bloqueada'))return false;
+ if(data.pallets.some(p=>p.location===location))return false;
+ return !location.endsWith('X')||data.pallets.some(p=>p.location===location.slice(0,-1));
+}
+function requireRackSlot(data,location){
+ if(!rackSlotAvailable(data,location))throw Error('Ubicación no disponible: '+location);
+}
 function rackBoard(){
  const [columns,levels]=rackPlan(invWarehouse,invOrientation);
  return `<p class="sub">${esc(invWarehouse)} · ${invOrientation==='N'?'Norte':'Sur'} · ${columns} columnas × ${levels} niveles</p>`+
@@ -163,10 +195,10 @@ function materialFields(){indexCatalog();return `<label>Código de material<inpu
 function resolveMaterial(code){const p=findCode(code);$('#material-description').value=p?.name||'';$('#material-status').textContent=p?'Material identificado.':code.trim()?'Código incompleto o no encontrado.':'Escribe el código del catálogo.';$('#material-code').setCustomValidity('')}
 let draftItems=[];
 function draftItemFrom(code,units){if(!/^\d+$/.test(String(units).trim()))throw Error('Escribe unidades enteras usando solo números');const prod=findCode(code),n=Number(units);if(!prod)throw Error('Código no encontrado en el catálogo');if(!Number.isSafeInteger(n)||n<1)throw Error('Ingresa unidades enteras positivas');return {product:prod.id,units:n}}
-function addDraftMaterial(){try{const item=draftItemFrom($('#material-code').value,$('#material-units').value);if(draftItems.some(i=>i.product===item.product))throw Error('Ese material ya está en este pallet. Quita su fila si necesitas corregir la cantidad.');draftItems.push(item);$('#material-code').value='';$('#material-units').value='';resolveMaterial('');renderDraftItems();$('#material-code').focus()}catch(e){alert(e.message)}}
+function addDraftMaterial(){try{const item=draftItemFrom($('#material-code').value,$('#material-units').value);if(draftItems.some(i=>i.product===item.product))throw Error('Ese material ya está en este pallet. Quita su fila si necesitas corregir la cantidad.');draftItems.push(item);$('#material-code').value='';$('#material-units').value='';resolveMaterial('');renderDraftItems();if(type==='Rack')quickPreview($('#modal form'));$('#material-code').focus()}catch(e){alert(e.message)}}
 function removeDraftMaterial(index){draftItems.splice(index,1);renderDraftItems()}
 function renderDraftItems(){$('#draft-materials').innerHTML=draftItems.length?`<h3>Contenido del pallet · ${draftItems.length} ${draftItems.length===1?'material':'materiales'}</h3><div class="scroll"><table><tr><th>Código</th><th>Descripción</th><th>Unidades</th><th></th></tr>${draftItems.map((i,n)=>`<tr><td>${esc(product(i.product)?.code)}</td><td>${esc(product(i.product)?.name)}</td><td>${num(i.units)}</td><td><button type="button" onclick="removeDraftMaterial(${n})">Quitar</button></td></tr>`).join('')}</table></div>`:'<p class="small">Agrega las medidas de este pallet. Se guardarán con una sola identificación.</p>'}
-function rackPositionChoices(name,selected='',required=false,handler='quickPreview(this.form)'){return `<fieldset class="position-fieldset"><legend>Número de ubicación${required?' · Obligatorio':''}</legend><div class="position-options">${[1,2,3,4].map(n=>`<label class="position-choice"><input type="radio" name="${name}" value="${n}" ${String(selected)===String(n)?'checked':''} ${required?'required':''} onchange="${handler}"><span>${n}</span></label>`).join('')}</div></fieldset>`}
+function rackPositionChoices(name,selected='',required=false,handler='quickPreview(this.form)'){return `<fieldset class="position-fieldset"><legend>Número de ubicación${required?' · Obligatorio':''}</legend><div class="position-options">${[1,2,3,4].map(n=>`<label class="position-choice"><input type="radio" name="${name}" value="${n}" ${String(selected)===String(n)?'checked':''} ${required?'required':''} onchange="${handler}"><span>${n}<small class="position-blocked">🔒 Ubicación no disponible</small></span></label>`).join('')}</div></fieldset>`}
 function sendToMarcos(id){const p=db.pallets.find(p=>p.id===id);if(!p||p.warehouse==='CENTRAL')return alert('Entrega a Central bloqueada.');if(p.items.length!==1)return alert('Para un pallet mixto, usa la acción de reparto o Mover pallet entre bodegas.');moveState=newMoveState(id);moveState.warehouse='CENTRAL';openModal(`<h2>Enviar ${esc(p.label)} completo a Bodega Central</h2><div class="preview">Origen: ${esc(place(p))}</div>${contentTable(p.items)}<div class="notice">Se entrega todo el pallet a Bodega Central. La entrega quedará bloqueada y saldrá de tu inventario activo.</div><form onsubmit="saveMove(event,'${id}')"><input name="dest" type="hidden" value="CENTRAL"><input name="createType" type="hidden" value=""><label>Observaciones<input name="note" maxlength="500"></label>${buttons('Confirmar entrega completa')}</form>`)}
 function quickDialog(type,a,n,existing=''){
  if(!db.warehouses.includes(invWarehouse)||invWarehouse==='CENTRAL')return alert('Elige primero la bodega.');if(type==='Rack'&&!['N','S'].includes(invOrientation))return alert('Elige primero Norte o Sur.');
@@ -185,8 +217,8 @@ function batchDialog(){
  <label>Código del material<input name="code" list="batch-codes" autocomplete="off" required oninput="updateBatchMaterial(this.value)"></label>
  <datalist id="batch-codes"></datalist>
  <label>Descripción<input id="batch-description" readonly></label>
- <fieldset class="side-fieldset"><legend>Lado</legend><div class="side-options">${[['A','Adelante'],['B','Atrás']].map(([value,label])=>`<label class="side-choice"><input type="radio" name="side" value="${value}" required><span><b>${label}</b></span></label>`).join('')}</div></fieldset>
- <label>¿Cuántas posiciones usarás?<select name="positions" required onchange="updateBatchPositions(this.form)"><option value="">Elige cantidad</option>${[1,2,3,4].map(n=>`<option value="${n}">${n}</option>`).join('')}</select></label>
+ <fieldset class="side-fieldset"><legend>Lado</legend><div class="side-options">${[['A','Adelante'],['B','Atrás']].map(([value,label])=>`<label class="side-choice"><input type="radio" name="side" value="${value}" required onchange="updateBatchPositions(this.form)"><span><b>${label}</b></span></label>`).join('')}</div></fieldset>
+ <label>¿Cuántas posiciones usarás?<select name="positions" required disabled onchange="updateBatchPositions(this.form)"><option value="">Elige cantidad</option>${[1,2,3,4].map(n=>`<option value="${n}">${n}</option>`).join('')}</select></label>
  ${[1,2,3,4].map(n=>`<div id="batch-position-${n}" hidden><label>Posición ${n} · unidades<input name="units${n}" inputmode="numeric" pattern="[0-9]+" required disabled></label></div>`).join('')}
  ${buttons('Guardar pallets')}</form>`);
 }
@@ -200,11 +232,21 @@ function updateBatchMaterial(value){
  }
  $('#batch-codes').innerHTML=matches.map(p=>`<option value="${esc(p.code)}">${esc(p.name)}</option>`).join('');
 }
+function batchSlots(side){
+ return ['A','B'].includes(side)?[1,2,3,4].filter(n=>rackSlotAvailable(db,rackPositionId(side,n))):[];
+}
 function updateBatchPositions(form){
- const count=Number(form.elements.positions.value);
+ const slots=batchSlots(form.elements.side.value);
+ const choice=form.elements.positions;
+ const previous=Number(choice.value);
+ choice.disabled=!slots.length;
+ for(const option of choice.options)if(option.value)option.disabled=Number(option.value)>slots.length;
+ if(previous>slots.length)choice.value='';
+ const selected=slots.slice(0,Number(choice.value));
  for(let n=1;n<=4;n++){
-  $('#batch-position-'+n).hidden=n>count;
-  form.elements['units'+n].disabled=n>count;
+  const visible=selected.includes(n);
+  $('#batch-position-'+n).hidden=!visible;
+  form.elements['units'+n].disabled=!visible;
  }
 }
 function saveBatch(e){
@@ -215,7 +257,9 @@ function saveBatch(e){
  try{
   const count=Number(f.get('positions'));
   if(![1,2,3,4].includes(count))throw Error('Elige cuántas posiciones usarás.');
-  for(let n=1;n<=count;n++){
+  const slots=batchSlots(f.get('side'));
+  if(count>slots.length)throw Error('No hay suficientes posiciones disponibles.');
+  for(const n of slots.slice(0,count)){
    const units=f.get('units'+n)?.trim();
    if(!units)throw Error('Ingresa unidades para la posición '+n);
    if(units)rows.push({loc:quickLocation(new Map([['side',f.get('side')],['position',String(n)]])),item:draftItemFrom(f.get('code'),units)});
@@ -225,6 +269,7 @@ function saveBatch(e){
  if(commit(d=>{
   const meta=operationMeta(d);
   for(const {loc,item} of rows){
+   requireRackSlot(d,loc);
    let location=d.locations.find(l=>l.id===loc);
    if(location?.status==='Bloqueada')throw Error('Ubicación bloqueada: '+loc);
    if(!location){location={id:loc,warehouse:q.warehouse,type:'Rack',status:'Pendiente'};d.locations.push(location)}
@@ -236,11 +281,19 @@ function saveBatch(e){
  })){q.saved=true;closeModal();toast(rows.length+' pallets guardados')}
 }
 function saveQuick(e){e.preventDefault();if(quickContext?.saved)return;const f=new FormData(e.target);let loc,items;try{loc=quickLocation(f);items=structuredClone(draftItems);const code=String(f.get('code')||'').trim(),units=String(f.get('units')||'').trim();if(code||units){const item=draftItemFrom(code,units);if(items.some(i=>i.product===item.product))throw Error('El material escrito ya está en la lista del pallet');items.push(item)}if(!items.length)throw Error('Agrega al menos un material al pallet');sumItems(items);}catch(e){return alert(e.message)}const q=quickContext;
- if(commit(d=>{let l=d.locations.find(l=>l.id===loc);if(!l){l={id:loc,warehouse:q.warehouse,type:q.type,status:'Pendiente'};d.locations.push(l)}if(l.warehouse!==q.warehouse||l.status==='Bloqueada')throw Error('Ubicación no válida o bloqueada');const n=d.pallets.filter(p=>p.location===loc).length;if(l.type==='Piso'&&l.id!==l.warehouse+'-P'&&n>=d.settings.maxHeight)throw Error('La pila alcanzó su altura máxima');const p=syncPallet({id:uid(),label:nextPalletLabel(d),items,warehouse:l.warehouse,location:loc,height:l.type==='Piso'&&l.id!==l.warehouse+'-P'?n+1:null,count:'Verificado',note:String(f.get('note')||'').trim(),created:new Date().toISOString(),externalId:null});d.pallets.push(p);if(l.status==='Vacía')l.status='Con espacio';logItems(d,'Inventario inicial',p,p.items,'Sin registrar',loc+(p.height?'-H'+p.height:''))})){quickContext.saved=true;closeModal();draftItems=[];toast('Pallet guardado con '+items.length+' materiales')}
+ if(commit(d=>{if(q.type==='Rack')requireRackSlot(d,loc);let l=d.locations.find(l=>l.id===loc);if(!l){l={id:loc,warehouse:q.warehouse,type:q.type,status:'Pendiente'};d.locations.push(l)}if(l.warehouse!==q.warehouse||l.status==='Bloqueada')throw Error('Ubicación no válida o bloqueada');const n=d.pallets.filter(p=>p.location===loc).length;if(l.type==='Piso'&&l.id!==l.warehouse+'-P'&&n>=d.settings.maxHeight)throw Error('La pila alcanzó su altura máxima');const p=syncPallet({id:uid(),label:nextPalletLabel(d),items,warehouse:l.warehouse,location:loc,height:l.type==='Piso'&&l.id!==l.warehouse+'-P'?n+1:null,count:'Verificado',note:String(f.get('note')||'').trim(),created:new Date().toISOString(),externalId:null});d.pallets.push(p);if(l.status==='Vacía')l.status='Con espacio';logItems(d,'Inventario inicial',p,p.items,'Sin registrar',loc+(p.height?'-H'+p.height:''))})){quickContext.saved=true;closeModal();draftItems=[];toast('Pallet guardado con '+items.length+' materiales')}
 }
 
-function quickLocation(f){const q=quickContext;if(q?.warehouse==='B04')throw Error('B04 · 🚧 En construcción');if(!q||q.warehouse==='CENTRAL'||!db.warehouses.includes(q.warehouse))throw Error('Elige una bodega de inventario');if(q.type==='Piso')return q.warehouse+'-P';if(q.existing)return q.existing;const rawPosition=String(f.get('position')||'').trim(),position=Number(rawPosition);if(!/^\d+$/.test(rawPosition)||!Number.isSafeInteger(position)||position<1)throw Error('Escribe el número de ubicación: no se asigna automáticamente');if(q.type==='Rack'&&position>4)throw Error('Elige una posición del 1 al 4');if(q.type==='Piso')return `${q.warehouse}-P-F${pad2(q.a)}-${String(position).padStart(3,'0')}`;const o=q.orientation,side=f.get('side');checkRack(q.warehouse,o,q.a,q.n);if(!['N','S'].includes(o))throw Error('Vuelve a elegir Norte o Sur en Registrar pallet');if(!['A','B'].includes(side))throw Error('Debes pulsar Adelante o Atrás antes de guardar');return `${q.warehouse}-${o}-C${pad2(q.a)}-N${pad2(q.n)}-${side}-${position}${f.get('stack')?'X':''}`}
-function quickPreview(form){try{$('#quick-preview').textContent='Vas a registrar en: '+quickLocation(new FormData(form))}catch(e){$('#quick-preview').textContent=e.message}}
+function quickLocation(f){const q=quickContext;if(q?.warehouse==='B04')throw Error('B04 · 🚧 En construcción');if(!q||q.warehouse==='CENTRAL'||!db.warehouses.includes(q.warehouse))throw Error('Elige una bodega de inventario');if(q.type==='Piso')return q.warehouse+'-P';if(q.existing)return q.existing;const rawPosition=String(f.get('position')||'').trim(),position=Number(rawPosition);if(!/^\d+$/.test(rawPosition)||!Number.isSafeInteger(position)||position<1)throw Error('Escribe el número de ubicación: no se asigna automáticamente');if(q.type==='Rack'&&position>4)throw Error('Elige una posición del 1 al 4');if(q.type==='Piso')return `${q.warehouse}-P-F${pad2(q.a)}-${String(position).padStart(3,'0')}`;const o=q.orientation,side=f.get('side');checkRack(q.warehouse,o,q.a,q.n);if(!['N','S'].includes(o))throw Error('Vuelve a elegir Norte o Sur en Registrar pallet');if(!['A','B'].includes(side))throw Error('Debes pulsar Adelante o Atrás antes de guardar');return rackPositionId(side,position)+(f.get('stack')?'X':'')}
+function quickPreview(form){
+ const side=form.elements.side?.value;
+ for(const input of form.querySelectorAll('input[name="position"]')){
+  const unavailable=!!side&&!rackSlotAvailable(db,rackPositionId(side,input.value)+(form.elements.stack?.checked?'X':''));
+  input.disabled=!side||unavailable;
+  input.closest('label').classList.toggle('unavailable',unavailable);
+  if(input.disabled)input.checked=false;
+ }
+ try{$('#quick-preview').textContent='Vas a registrar en: '+quickLocation(new FormData(form))}catch(e){$('#quick-preview').textContent=e.message}}
 function palletMatches(p,q){return [p.label,p.location,...p.items.flatMap(i=>[product(i.product)?.code,product(i.product)?.name])].join(' ').toLowerCase().includes(q.toLowerCase())}
 function contentTable(items){return `<div class="scroll"><table><tr><th>Código</th><th>Material</th><th>Unidades</th></tr>${items.map(i=>`<tr><td>${esc(i.code||product(i.product)?.code)}</td><td>${esc(i.description||product(i.product)?.name)}</td><td>${num(i.units)}</td></tr>`).join('')}</table></div>`}
 function locationParts(location,w){
