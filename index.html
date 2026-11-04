@@ -40,11 +40,17 @@ aside{overflow-y:auto}
   aside nav button{padding:9px 12px;margin:2px 0}
 }
 
+.rack-count.has-pallets{color:#16733c}
 .rack-count{display:grid;place-items:center;font-weight:700}
 .position-blocked{display:none}
 .position-choice.unavailable span{background:#e5e7eb;color:#4b5563;border-color:#d1d5db;flex-direction:column;text-align:center}
 .position-choice.unavailable .position-blocked{display:block;font-size:11px}
 .position-choice:has(input:disabled){cursor:default}
+.material-suggestions:not([hidden]){display:grid;gap:4px;max-height:220px;overflow:auto;margin:-6px 0 12px}.material-suggestions button{text-align:left;white-space:normal}
+.manual-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0}
+#manual-toggle{font-weight:700;background:#f6fafc}
+#manual-toggle[aria-pressed="true"]{background:var(--teal);color:white}
+.material-suggestions .keyboard-active{background:#e0f3f2;outline:2px solid var(--teal);outline-offset:-2px}
 </style>
 <aside><div class="logo">Nexora<small>INVENTORY</small></div><nav id="nav"></nav><footer>Nexora · Maqueta local<br>Operador principal<br>NetSuite no conectado</footer></aside><main><header><div><h1 id="title"></h1><p class="sub" id="subtitle"></p></div></header><div id="content"></div></main><dialog id="modal"></dialog><div id="toast" role="status"></div>
 <script id="excel-reader">
@@ -96,7 +102,7 @@ function selectWh(id,all=true){return `<select id="${id}" onchange="warehouse=th
 function empty(s){return `<div class="empty">${s}</div>`}function badge(s,c=''){return `<span class="pill ${c}">${esc(s)}</span>`}
 const tabs=['Resumen','Registrar pallet','Visualizar bodega','Buscar material','Movimientos','Alertas','Configuración'];
 const subtitles={'Visualizar bodega':'Consulta la cantidad de pallets por columna y nivel.',Resumen:'El inventario físico, bajo tu control.','Registrar pallet':'Elige tu bodega y registra directamente sobre el mapa.', 'Buscar material':'Encuentra todas las ubicaciones de un material.',Ubicaciones:'Arrastra un pallet o usa el botón Mover.',Movimientos:'Trazabilidad de entradas, salidas y reacomodos.',Alertas:'Anticípate a la reposición por unidades.',Configuración:'Bodegas, materiales, respaldos e integración futura.'};
-function go(t){tab=t;filter='';warehouse='';if(t==='Movimientos')movementFilters.type='';if(t==='Buscar material')Object.assign(rackSearch,{orientation:'',column:'',level:''});if(t==='Registrar pallet'){invWarehouse='';invOrientation='';invSide='';invArea='Rack';}render()}function render(){ $('#nav').innerHTML=tabs.map((t,i)=>`<button class="${tab===t?'active':''}" onclick="go(tabs[${i}])">${esc(t)}${t==='Alertas'&&alerts().length?' · '+alerts().length:''}</button>`).join('');$('#title').textContent=tab;$('#subtitle').textContent=subtitles[tab]; const views={'Resumen':summary,'Registrar pallet':inventory,'Visualizar bodega':warehouseView,'Buscar material':search,'Movimientos':movements,'Alertas':alertView,'Configuración':settings};$('#content').innerHTML=views[tab]();}
+function go(t){tab=t;filter='';warehouse='';if(t==='Movimientos')movementFilters.type='';if(t==='Buscar material')Object.assign(rackSearch,{type:'',orientation:'',column:'',level:''});if(t==='Registrar pallet'){invWarehouse='';invOrientation='';invSide='';invArea='Rack';}render()}function render(){ $('#nav').innerHTML=tabs.map((t,i)=>`<button class="${tab===t?'active':''}" onclick="go(tabs[${i}])">${esc(t)}${t==='Alertas'&&alerts().length?' · '+alerts().length:''}</button>`).join('');$('#title').textContent=tab;$('#subtitle').textContent=subtitles[tab]; const views={'Resumen':summary,'Registrar pallet':inventory,'Visualizar bodega':warehouseView,'Buscar material':search,'Movimientos':movements,'Alertas':alertView,'Configuración':settings};$('#content').innerHTML=views[tab]();}
 function summary(){return `<div class="summary-stats"><button class="card summary-metric" onclick="go('Buscar material')"><span class="summary-metric-label">Pallets activos</span><strong>${num(activePallets().length)}</strong><span class="summary-metric-note">En tus bodegas · sin entregados a Central</span></button><button class="card summary-metric" onclick="go('Alertas')"><span class="summary-metric-label">Alertas</span><strong>${num(alerts().length)}</strong><span class="summary-metric-note">Materiales en el mínimo o por debajo</span></button></div>`}
 db.warehouses=orderedWarehouses();
 let invWarehouse='',invOrientation='',invSide='',invArea='Rack';
@@ -134,7 +140,8 @@ function checkRack(w,o,c,n){
  if(obstacle)throw Error(obstacle);
 }
 function rackGrid(w,o,cell){
- const [columns,levels,width=85]=rackPlan(w,o);
+ const [columns,levels]=rackPlan(w,o);
+ const width=85;
  return `<div class="rack-scroll"><div class="rack-board" style="--rack-columns:${columns};--rack-width:${width}px"><div></div>${Array.from({length:columns},(_,i)=>`<div class="rack-head">C${pad2(i+1)}</div>`).join('')}${Array.from({length:levels},(_,i)=>{
  const n=levels-i;
  return `<div class="rack-level">N${pad2(n)}</div>`+Array.from({length:columns},(_,j)=>{
@@ -154,8 +161,17 @@ function warehouseView(){
  rackGrid(viewWarehouse,viewOrientation,(c,n)=>{
   const prefix=`${viewWarehouse}-${viewOrientation}-C${pad2(c)}-N${pad2(n)}-`;
   const count=db.pallets.filter(p=>p.warehouse===viewWarehouse&&p.location.startsWith(prefix)).length;
-  return `<div class="rack-cell rack-count">${count} ${count===1?'pallet':'pallets'}</div>`;
+  return `<button class="rack-cell rack-count ${count?'has-pallets':''}" onclick="viewRackSlots(${c},${n})">${count} ${count===1?'pallet':'pallets'}</button>`;
  })+'</section>':'');
+}
+function viewRackSlots(c,n){
+ const prefix=`${viewWarehouse}-${viewOrientation}-C${pad2(c)}-N${pad2(n)}-`;
+ const state=id=>db.pallets.some(p=>p.location===id)?'Ocupado':rackSlotAvailable(db,id)?'Libre':'No disponible';
+ const rows=[['A','Adelante'],['B','Atrás']].flatMap(([side,label])=>[1,2,3,4].map(n=>{
+  const id=prefix+side+'-'+n;
+  return `<tr><td>${label} ${n}</td><td>${state(id)}</td><td>${state(id+'X')}</td></tr>`;
+ })).join('');
+ openModal(`<h2>${esc(viewWarehouse)} · ${viewOrientation==='N'?'Norte':'Sur'} · C${pad2(c)} · N${pad2(n)}</h2><div class="scroll"><table><tr><th>Posición</th><th>Base</th><th>Encima (X)</th></tr>${rows}</table></div><button onclick="closeModal()">Cerrar</button>`);
 }
 function rackPositionId(side,position){
  const q=quickContext;
@@ -182,55 +198,125 @@ function outOfGridNotice(){const ps=db.pallets.filter(p=>p.warehouse===invWareho
 function floorBoard(){
  return `<button class="primary" onclick="quickDialog('Piso',0,0)">+ Registrar pallet en piso</button>
  <label>Buscar código en piso<input oninput="floorResults(this.value)" autocomplete="off"></label>
- <div id="floor-results">${empty('Escribe un código para buscar en piso.')}</div>`;
+ <div id="floor-results">${empty('Escribe un código o descripción para buscar en piso.')}</div>`;
 }
 function floorResults(code){
  const material=findCode(code);
  const pallets=material?activePallets().filter(p=>p.warehouse===invWarehouse&&/^B\d+-P(?:-|$)/.test(p.location)&&p.items.some(i=>i.product===material.id)):[];
- $('#floor-results').innerHTML=code.trim()?palletRows(pallets):empty('Escribe un código para buscar en piso.');
+ $('#floor-results').innerHTML=code.trim()?palletRows(pallets):empty('Escribe un código o descripción para buscar en piso.');
 }
 function rackDialog(c,n){quickDialog('Rack',c,n)}
 let quickContext=null;
-function materialFields(){indexCatalog();return `<label>Código de material<input name="code" id="material-code" autocomplete="off" spellcheck="false" placeholder="Escribe el código" oninput="resolveMaterial(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();$('#material-units').focus()}"></label><label>Descripción del catálogo<input id="material-description" readonly tabindex="-1" placeholder="Se completa al reconocer el código"></label><p id="material-status" class="small">Búsqueda exacta por código.</p>`}
-function resolveMaterial(code){const p=findCode(code);$('#material-description').value=p?.name||'';$('#material-status').textContent=p?'Material identificado.':code.trim()?'Código incompleto o no encontrado.':'Escribe el código del catálogo.';$('#material-code').setCustomValidity('')}
+function materialFields(){indexCatalog();return `<label>Código o descripción<input name="code" id="material-code" autocomplete="off" spellcheck="false" placeholder="Ej. 1804502, 2H o F-436" oninput="resolveMaterial(this.value)" onkeydown="catalogKeys(event,'material-suggestions')"></label><div id="material-suggestions" class="material-suggestions" hidden></div><label>Descripción del catálogo<input id="material-description" readonly tabindex="-1" placeholder="Se completa al reconocer el código"></label><p id="material-status" class="small">Busca por código o descripción.</p>`}
+function catalogSuggestions(input,description,list,status){
+ const query=input.value.trim(), exact=findCode(query);
+ description.value=exact?.name||'';
+ list.replaceChildren();
+ const matches=[];
+ if(query&&!exact){
+  for(const material of db.products){
+   if(matchesMaterial(material.code,material.name,query))matches.push(material);
+   if(matches.length===12)break;
+  }
+ }
+ list.hidden=!matches.length;
+ for(const material of matches){
+  const option=document.createElement('button');
+  option.type='button';
+  option.textContent=material.code+' · '+material.name;
+  option.onclick=()=>{
+   input.value=material.code;
+   catalogSuggestions(input,description,list,status);
+   (input.form.elements.units||input.form.elements.side[0]).focus();
+  };
+  list.append(option);
+ }
+ input.setCustomValidity('');
+ if(status)status.textContent=exact?'Material identificado.':matches.length?'Selecciona un material de la lista.':query?'No se encontraron materiales.':'Busca por código o descripción.';
+}
+function catalogKeys(event,id){
+ if(event.isComposing||!['ArrowDown','ArrowUp','Enter'].includes(event.key))return;
+ const input=event.currentTarget,list=document.getElementById(id);
+ const options=list.hidden?[]:Array.from(list.children);
+ if(!options.length){
+  if(event.key==='Enter'){
+   event.preventDefault();
+   if(findCode(input.value))(input.form.elements.units||input.form.elements.side[0]).focus();
+  }
+  return;
+ }
+ event.preventDefault();
+ const active=options.findIndex(option=>option.classList.contains('keyboard-active'));
+ if(event.key==='Enter'){options[Math.max(0,active)].click();return}
+ const next=active<0?(event.key==='ArrowDown'?0:options.length-1):
+  (active+(event.key==='ArrowDown'?1:-1)+options.length)%options.length;
+ options[active]?.classList.remove('keyboard-active');
+ options[next].classList.add('keyboard-active');
+ options[next].scrollIntoView({block:'nearest'});
+}
+function toggleManual(button,enabled=button.getAttribute('aria-pressed')!=='true'){
+ button.setAttribute('aria-pressed',String(enabled));
+ const form=button.form;
+ $('#catalog-entry').hidden=enabled;
+ $('#manual-entry').hidden=!enabled;
+ for(const name of ['manualCode','manualDescription'])form.elements[name].disabled=!enabled;
+ form.elements.code.disabled=enabled;
+}
+function readQuickItem(form){
+ const units=form.elements.units.value;
+ if(form.elements.manualCode.disabled)return draftItemFrom(form.elements.code.value,units);
+ if(!/^\d+$/.test(units.trim())||!Number.isSafeInteger(Number(units))||Number(units)<1)throw Error('Ingresa unidades enteras positivas');
+ const code=form.elements.manualCode.value.trim(), name=form.elements.manualDescription.value.trim()||'Otros sin código';
+ if(code&&findCode(code))throw Error('Ese código ya existe. Selecciona el material del catálogo.');
+ const id=uid();
+ return {product:id,units:Number(units),manualProduct:{id,code:code||'SIN-CODIGO-'+id,name,min:0}};
+}
+function appendQuickItem(items,item){
+ if(items.some(i=>i.product===item.product||i.manualProduct&&item.manualProduct&&i.manualProduct.code.toLowerCase()===item.manualProduct.code.toLowerCase()))throw Error('Ese material ya está en este pallet.');
+ items.push(item);
+}
+function resolveMaterial(){catalogSuggestions($('#material-code'),$('#material-description'),$('#material-suggestions'),$('#material-status'))}
 let draftItems=[];
 function draftItemFrom(code,units){if(!/^\d+$/.test(String(units).trim()))throw Error('Escribe unidades enteras usando solo números');const prod=findCode(code),n=Number(units);if(!prod)throw Error('Código no encontrado en el catálogo');if(!Number.isSafeInteger(n)||n<1)throw Error('Ingresa unidades enteras positivas');return {product:prod.id,units:n}}
-function addDraftMaterial(){try{const item=draftItemFrom($('#material-code').value,$('#material-units').value);if(draftItems.some(i=>i.product===item.product))throw Error('Ese material ya está en este pallet. Quita su fila si necesitas corregir la cantidad.');draftItems.push(item);$('#material-code').value='';$('#material-units').value='';resolveMaterial('');renderDraftItems();if(type==='Rack')quickPreview($('#modal form'));$('#material-code').focus()}catch(e){alert(e.message)}}
+function addDraftMaterial(){
+ const form=$('#modal form');
+ try{
+  appendQuickItem(draftItems,readQuickItem(form));
+  for(const name of ['code','manualCode','manualDescription','units'])form.elements[name].value='';
+  toggleManual($('#manual-toggle'),false);
+  resolveMaterial();renderDraftItems();$('#material-code').focus();
+ }catch(error){alert(error.message)}
+}
 function removeDraftMaterial(index){draftItems.splice(index,1);renderDraftItems()}
-function renderDraftItems(){$('#draft-materials').innerHTML=draftItems.length?`<h3>Contenido del pallet · ${draftItems.length} ${draftItems.length===1?'material':'materiales'}</h3><div class="scroll"><table><tr><th>Código</th><th>Descripción</th><th>Unidades</th><th></th></tr>${draftItems.map((i,n)=>`<tr><td>${esc(product(i.product)?.code)}</td><td>${esc(product(i.product)?.name)}</td><td>${num(i.units)}</td><td><button type="button" onclick="removeDraftMaterial(${n})">Quitar</button></td></tr>`).join('')}</table></div>`:'<p class="small">Agrega las medidas de este pallet. Se guardarán con una sola identificación.</p>'}
+function renderDraftItems(){$('#draft-materials').innerHTML=draftItems.length?`<h3>Contenido del pallet · ${draftItems.length} ${draftItems.length===1?'material':'materiales'}</h3><div class="scroll"><table><tr><th>Código</th><th>Descripción</th><th>Unidades</th><th></th></tr>${draftItems.map((i,n)=>`<tr><td>${esc((i.manualProduct||product(i.product))?.code)}</td><td>${esc((i.manualProduct||product(i.product))?.name)}</td><td>${num(i.units)}</td><td><button type="button" onclick="removeDraftMaterial(${n})">Quitar</button></td></tr>`).join('')}</table></div>`:'<p class="small">Agrega las medidas de este pallet. Se guardarán con una sola identificación.</p>'}
 function rackPositionChoices(name,selected='',required=false,handler='quickPreview(this.form)'){return `<fieldset class="position-fieldset"><legend>Número de ubicación${required?' · Obligatorio':''}</legend><div class="position-options">${[1,2,3,4].map(n=>`<label class="position-choice"><input type="radio" name="${name}" value="${n}" ${String(selected)===String(n)?'checked':''} ${required?'required':''} onchange="${handler}"><span>${n}<small class="position-blocked">🔒 Ubicación no disponible</small></span></label>`).join('')}</div></fieldset>`}
 function sendToMarcos(id){const p=db.pallets.find(p=>p.id===id);if(!p||p.warehouse==='CENTRAL')return alert('Entrega a Central bloqueada.');if(p.items.length!==1)return alert('Para un pallet mixto, usa la acción de reparto o Mover pallet entre bodegas.');moveState=newMoveState(id);moveState.warehouse='CENTRAL';openModal(`<h2>Enviar ${esc(p.label)} completo a Bodega Central</h2><div class="preview">Origen: ${esc(place(p))}</div>${contentTable(p.items)}<div class="notice">Se entrega todo el pallet a Bodega Central. La entrega quedará bloqueada y saldrá de tu inventario activo.</div><form onsubmit="saveMove(event,'${id}')"><input name="dest" type="hidden" value="CENTRAL"><input name="createType" type="hidden" value=""><label>Observaciones<input name="note" maxlength="500"></label>${buttons('Confirmar entrega completa')}</form>`)}
 function quickDialog(type,a,n,existing=''){
  if(!db.warehouses.includes(invWarehouse)||invWarehouse==='CENTRAL')return alert('Elige primero la bodega.');if(type==='Rack'&&!['N','S'].includes(invOrientation))return alert('Elige primero Norte o Sur.');
  quickContext={type,a,n,existing,warehouse:invWarehouse,orientation:type==='Rack'?invOrientation:''};draftItems=[];
  openModal(`<h2>${type==='Rack'?`${esc(invWarehouse)} · C${pad2(a)} · N${pad2(n)}`:`${esc(invWarehouse)} · Piso`}</h2>${type==='Rack'?'<button type="button" onclick="batchDialog()">Registrar varios pallets</button>':''}<p class="sub">Un pallet, una ubicación y todas sus medidas.</p><form autocomplete="off" onsubmit="saveQuick(event)">
+ <fieldset class="side-fieldset"><legend>¿Qué contiene este pallet?</legend><div class="side-options">${[['single','Un solo material'],['mixed','Pallet mixto']].map(([value,label])=>`<label class="side-choice"><input type="radio" name="materialMode" value="${value}" required onchange="setMaterialMode(this.form)"><span><b>${label}</b></span></label>`).join('')}</div></fieldset>
  ${type==='Rack'?`<div class="orientation-confirmed"><span>Orientación elegida</span><strong>${invOrientation==='N'?'NORTE':'SUR'}</strong></div><fieldset class="side-fieldset"><legend>¿Adelante o atrás? <span>Obligatorio</span></legend><div class="side-options"><label class="side-choice"><input type="radio" name="side" value="A" required onchange="quickPreview(this.form)"><span><b>Adelante</b><small>Posición A</small></span></label><label class="side-choice"><input type="radio" name="side" value="B" required onchange="quickPreview(this.form)"><span><b>Atrás</b><small>Posición B</small></span></label></div></fieldset>`:''}
- ${existing?`<div class="preview">${esc(existing)} · pila seleccionada</div>`:type==='Rack'?`${rackPositionChoices('position','',true)}<label><input name="stack" type="checkbox" onchange="quickPreview(this.form)"> Montado encima · X</label>`:''}
+ ${existing?`<div class="preview">${esc(existing)} · pila seleccionada</div>`:type==='Rack'?`${rackPositionChoices('position','',true)}<div class="manual-row"><label><input name="stack" type="checkbox" onchange="quickPreview(this.form)"> Montado encima · X</label>`:'<div class="manual-row">'}
+ <button type="button" id="manual-toggle" aria-pressed="false" onclick="toggleManual(this)">Otros sin código</button></div>
  <div class="preview" id="quick-preview">${type==='Piso'?'Vas a registrar en piso de '+esc(invWarehouse):'Completa la ubicación para verificar el destino.'}</div>
- <div class="material-editor"><h3>Agregar material al pallet</h3>${materialFields()}<label>Unidades de este material<input id="material-units" name="units" type="text" inputmode="numeric" pattern="[0-9]+" min="1" step="1" placeholder="Cantidad contada" onkeydown="if(event.key==='Enter'){event.preventDefault();addDraftMaterial()}"></label><button type="button" onclick="addDraftMaterial()">+ Agregar material</button></div><div id="draft-materials"></div>
+ <div class="material-editor"><h3>Agregar material al pallet</h3><div id="catalog-entry">${materialFields()}</div><div id="manual-entry" hidden><label>Código manual (opcional)<input name="manualCode" maxlength="80" disabled></label><label>Descripción (opcional)<input name="manualDescription" maxlength="250" disabled></label></div><label>Unidades de este material<input id="material-units" name="units" type="text" inputmode="numeric" pattern="[0-9]+" min="1" step="1" placeholder="Cantidad contada" onkeydown="if(event.key==='Enter'){event.preventDefault();if(this.form.elements.materialMode.value==='mixed')addDraftMaterial();}"></label><button type="button" id="add-mixed-material" hidden onclick="addDraftMaterial()">+ Agregar material</button></div><div id="draft-materials" hidden></div>
  <label>Observaciones<input name="note" maxlength="500"></label><p class="small">El botón Guardar incluye también el material que tengas escrito, aunque no pulses Agregar.</p>${buttons('Guardar pallet completo')}</form>${!db.products.length?'<div class="notice">Primero importa el catálogo en Configuración.</div>':''}`);renderDraftItems();
 }
 function batchDialog(){
  openModal(`<h2>Registrar varios pallets</h2>
  <p>${esc(quickContext.warehouse)} · ${esc(quickContext.orientation)} · C${pad2(quickContext.a)} · N${pad2(quickContext.n)}</p>
  <form onsubmit="saveBatch(event)">
- <label>Código del material<input name="code" list="batch-codes" autocomplete="off" required oninput="updateBatchMaterial(this.value)"></label>
- <datalist id="batch-codes"></datalist>
+ <label>Código o descripción<input name="code" autocomplete="off" required placeholder="Ej. 2H o F-436" oninput="updateBatchMaterial(this)" onkeydown="catalogKeys(event,'batch-codes')"></label>
+ <div id="batch-codes" class="material-suggestions" hidden></div>
  <label>Descripción<input id="batch-description" readonly></label>
  <fieldset class="side-fieldset"><legend>Lado</legend><div class="side-options">${[['A','Adelante'],['B','Atrás']].map(([value,label])=>`<label class="side-choice"><input type="radio" name="side" value="${value}" required onchange="updateBatchPositions(this.form)"><span><b>${label}</b></span></label>`).join('')}</div></fieldset>
  <label>¿Cuántas posiciones usarás?<select name="positions" required disabled onchange="updateBatchPositions(this.form)"><option value="">Elige cantidad</option>${[1,2,3,4].map(n=>`<option value="${n}">${n}</option>`).join('')}</select></label>
  ${[1,2,3,4].map(n=>`<div id="batch-position-${n}" hidden><label>Posición ${n} · unidades<input name="units${n}" inputmode="numeric" pattern="[0-9]+" required disabled></label></div>`).join('')}
  ${buttons('Guardar pallets')}</form>`);
 }
-function updateBatchMaterial(value){
- const query=value.trim().toLowerCase();
- $('#batch-description').value=findCode(query)?.name||'';
- const matches=[];
- if(query)for(const material of db.products){
-  if(material.code.toLowerCase().includes(query))matches.push(material);
-  if(matches.length===12)break;
- }
- $('#batch-codes').innerHTML=matches.map(p=>`<option value="${esc(p.code)}">${esc(p.name)}</option>`).join('');
+function updateBatchMaterial(input){
+ catalogSuggestions(input,$('#batch-description'),$('#batch-codes'));
 }
 function batchSlots(side){
  return ['A','B'].includes(side)?[1,2,3,4].filter(n=>rackSlotAvailable(db,rackPositionId(side,n))):[];
@@ -280,8 +366,18 @@ function saveBatch(e){
   }
  })){q.saved=true;closeModal();toast(rows.length+' pallets guardados')}
 }
-function saveQuick(e){e.preventDefault();if(quickContext?.saved)return;const f=new FormData(e.target);let loc,items;try{loc=quickLocation(f);items=structuredClone(draftItems);const code=String(f.get('code')||'').trim(),units=String(f.get('units')||'').trim();if(code||units){const item=draftItemFrom(code,units);if(items.some(i=>i.product===item.product))throw Error('El material escrito ya está en la lista del pallet');items.push(item)}if(!items.length)throw Error('Agrega al menos un material al pallet');sumItems(items);}catch(e){return alert(e.message)}const q=quickContext;
- if(commit(d=>{if(q.type==='Rack')requireRackSlot(d,loc);let l=d.locations.find(l=>l.id===loc);if(!l){l={id:loc,warehouse:q.warehouse,type:q.type,status:'Pendiente'};d.locations.push(l)}if(l.warehouse!==q.warehouse||l.status==='Bloqueada')throw Error('Ubicación no válida o bloqueada');const n=d.pallets.filter(p=>p.location===loc).length;if(l.type==='Piso'&&l.id!==l.warehouse+'-P'&&n>=d.settings.maxHeight)throw Error('La pila alcanzó su altura máxima');const p=syncPallet({id:uid(),label:nextPalletLabel(d),items,warehouse:l.warehouse,location:loc,height:l.type==='Piso'&&l.id!==l.warehouse+'-P'?n+1:null,count:'Verificado',note:String(f.get('note')||'').trim(),created:new Date().toISOString(),externalId:null});d.pallets.push(p);if(l.status==='Vacía')l.status='Con espacio';logItems(d,'Inventario inicial',p,p.items,'Sin registrar',loc+(p.height?'-H'+p.height:''))})){quickContext.saved=true;closeModal();draftItems=[];toast('Pallet guardado con '+items.length+' materiales')}
+function setMaterialMode(form){
+ const mixed=form.elements.materialMode.value==='mixed';
+ $('#add-mixed-material').hidden=!mixed;
+ $('#draft-materials').hidden=!mixed;
+}
+function saveQuick(e){e.preventDefault();if(quickContext?.saved)return;const f=new FormData(e.target);let loc,items;try{loc=quickLocation(f);items=f.get('materialMode')==='mixed'?structuredClone(draftItems):[];if(['code','units','manualCode','manualDescription'].some(name=>String(f.get(name)||'').trim()))appendQuickItem(items,readQuickItem(e.target));if(!items.length)throw Error('Agrega al menos un material al pallet');if(f.get('materialMode')==='mixed'&&items.length<2)throw Error('Agrega al menos dos materiales distintos para un pallet mixto.');sumItems(items);}catch(e){return alert(e.message)}const q=quickContext;
+ if(commit(d=>{if(q.type==='Rack')requireRackSlot(d,loc);
+ for(const item of items){
+  if(item.manualProduct)d.products.push(item.manualProduct);
+ }
+ const savedItems=items.map(({product,units})=>({product,units}));
+ let l=d.locations.find(l=>l.id===loc);if(!l){l={id:loc,warehouse:q.warehouse,type:q.type,status:'Pendiente'};d.locations.push(l)}if(l.warehouse!==q.warehouse||l.status==='Bloqueada')throw Error('Ubicación no válida o bloqueada');const n=d.pallets.filter(p=>p.location===loc).length;if(l.type==='Piso'&&l.id!==l.warehouse+'-P'&&n>=d.settings.maxHeight)throw Error('La pila alcanzó su altura máxima');const p=syncPallet({id:uid(),label:nextPalletLabel(d),items:savedItems,warehouse:l.warehouse,location:loc,height:l.type==='Piso'&&l.id!==l.warehouse+'-P'?n+1:null,count:'Verificado',note:String(f.get('note')||'').trim(),created:new Date().toISOString(),externalId:null});d.pallets.push(p);if(l.status==='Vacía')l.status='Con espacio';logItems(d,'Inventario inicial',p,p.items,'Sin registrar',loc+(p.height?'-H'+p.height:''))})){quickContext.saved=true;closeModal();draftItems=[];toast('Pallet guardado con '+items.length+' materiales')}
 }
 
 function quickLocation(f){const q=quickContext;if(q?.warehouse==='B04')throw Error('B04 · 🚧 En construcción');if(!q||q.warehouse==='CENTRAL'||!db.warehouses.includes(q.warehouse))throw Error('Elige una bodega de inventario');if(q.type==='Piso')return q.warehouse+'-P';if(q.existing)return q.existing;const rawPosition=String(f.get('position')||'').trim(),position=Number(rawPosition);if(!/^\d+$/.test(rawPosition)||!Number.isSafeInteger(position)||position<1)throw Error('Escribe el número de ubicación: no se asigna automáticamente');if(q.type==='Rack'&&position>4)throw Error('Elige una posición del 1 al 4');if(q.type==='Piso')return `${q.warehouse}-P-F${pad2(q.a)}-${String(position).padStart(3,'0')}`;const o=q.orientation,side=f.get('side');checkRack(q.warehouse,o,q.a,q.n);if(!['N','S'].includes(o))throw Error('Vuelve a elegir Norte o Sur en Registrar pallet');if(!['A','B'].includes(side))throw Error('Debes pulsar Adelante o Atrás antes de guardar');return rackPositionId(side,position)+(f.get('stack')?'X':'')}
@@ -315,20 +411,26 @@ function movementLocation(location){
  return parts?`<div class="movement-location">${parts.map(part=>`<div>${locationPair(part)}</div>`).join('')}</div>`:esc(wh(location));
 }
 function palletRows(ps){return ps.length?`<div class="scroll"><table><thead><tr><th>Materiales y cantidad</th><th>Bodega</th><th>Orientación</th><th>Columna</th><th>Nivel</th><th>Posición</th><th>Acciones</th></tr></thead><tbody>${ps.map(p=>`<tr><td>${p.items.map(i=>`<div class="content-line"><b>${esc(product(i.product)?.code)}</b> · ${esc(product(i.product)?.name)}<br><span>${num(i.units)} unidades</span></div>`).join('')}</td>${palletLocationCells(p)}<td>${p.warehouse==='CENTRAL'?badge('Entregado · bloqueado'):`<div class="pallet-actions"><button onclick="moveDialog('${p.id}')">Mover pallet entre bodegas</button>${p.items.length>1?`<button class="primary" onclick="splitDialog('${p.id}')">Distribuir pallet</button>`:`<button class="primary" onclick="sendToMarcos('${p.id}')">Enviar pallet a Bodega Central</button>`}<button onclick="palletDetail('${p.id}')">Ver última ubicación</button></div>`}</td></tr>`).join('')}</tbody></table></div>`:empty('No hay pallets registrados para esta selección.')}
-function deliveredRows(){const q=filter.trim().toLowerCase(),ds=db.deliveries.filter(t=>t.items.some(i=>i.code?.toLowerCase()===q)&&locationMatches(t.from));return `<p class="sub">${ds.length} entregas · solo consulta</p>${ds.length?ds.map(t=>`<section class="delivery-card"><div class="panel-heading"><div><b>${esc(t.pallet)}</b> · ${esc(new Date(t.date).toLocaleString('es-CL'))}</div>${badge('Entregado · bloqueado')}</div><p class="small">${esc(t.operationId)} · Origen: ${esc(t.from)}</p>${contentTable(t.items)}</section>`).join(''):empty('No hay entregas que coincidan con la búsqueda.')}`}
-const rackSearch={orientation:'',column:'',level:''};
+function deliveredRows(){const ds=db.deliveries.filter(t=>t.items.some(i=>matchesMaterial(i.code,i.description))&&locationMatches(t.from));return `<p class="sub">${ds.length} entregas · solo consulta</p>${ds.length?ds.map(t=>`<section class="delivery-card"><div class="panel-heading"><div><b>${esc(t.pallet)}</b> · ${esc(new Date(t.date).toLocaleString('es-CL'))}</div>${badge('Entregado · bloqueado')}</div><p class="small">${esc(t.operationId)} · Origen: ${esc(t.from)}</p>${contentTable(t.items)}</section>`).join(''):empty('No hay entregas que coincidan con la búsqueda.')}`}
+const rackSearch={type:'',orientation:'',column:'',level:''};
 function rackSearchFields(){
- return [['orientation','Orientación',[['N','Norte'],['S','Sur']]],['column','Columna',Array.from({length:10},(_,i)=>['C'+pad2(i+1),'C'+pad2(i+1)])],['level','Nivel',Array.from({length:7},(_,i)=>['N'+pad2(i+1),'N'+pad2(i+1)])]].map(([key,label,options])=>`<label>${label}<select onchange="rackSearch.${key}=this.value;refreshSearch()"><option value="">Todas</option>${options.map(([value,name])=>`<option value="${value}" ${rackSearch[key]===value?'selected':''}>${name}</option>`).join('')}</select></label>`).join('');
+ return [['orientation','Orientación',[['N','Norte'],['S','Sur']]],['column','Columna',Array.from({length:10},(_,i)=>['C'+pad2(i+1),'C'+pad2(i+1)])],['level','Nivel',Array.from({length:7},(_,i)=>['N'+pad2(i+1),'N'+pad2(i+1)])]].map(([key,label,options])=>`<label>${label}<select ${rackSearch.type==='Piso'?'disabled':''} onchange="rackSearch.${key}=this.value;refreshSearch()"><option value="">Todas</option>${options.map(([value,name])=>`<option value="${value}" ${rackSearch[key]===value?'selected':''}>${name}</option>`).join('')}</select></label>`).join('');
 }
 function locationMatches(location){
  const [,orientation,column,level]=location.split('-');
+ if(rackSearch.type==='Piso')return orientation==='P';
+ if(rackSearch.type==='Rack'&&!['N','S'].includes(orientation))return false;
  return Object.entries({orientation,column,level}).every(([k,v])=>!rackSearch[k]||rackSearch[k]===v);
 }
-function searchMatch(p){
- return (!warehouse||p.warehouse===warehouse)&&p.items.some(i=>product(i.product)?.code.toLowerCase()===filter.trim().toLowerCase())&&locationMatches(p.location);
+function matchesMaterial(code,description,query=filter){
+ const haystack=(String(code||'')+' '+String(description||'')).toLowerCase();
+ return query.trim().toLowerCase().split(/\s+/).every(term=>haystack.includes(term));
 }
-function search(){return `<div class="card"><div class="row material-filters"><label>Código<input value="${esc(filter)}" id="query" placeholder="Código del material" oninput="filter=this.value;refreshSearch()"></label><label>Bodega${selectWh('wh')}</label>${rackSearchFields()}<button id="search-filtered-export" onclick="csv(true)" ${!filter.trim()||warehouse==='CENTRAL'?'disabled':''}>CSV filtrado de mis bodegas</button><button onclick="csv()">CSV de todas mis bodegas</button></div><p class="small">${warehouse==='CENTRAL'?'Entregas a Bodega Central: consulta cerrada. Su descarga se hace en Movimientos → Entregas a Bodega Central.':'Un pallet mixto aparece al buscar cualquiera de sus materiales. Se muestra todo su contenido.'}</p><div id="results">${searchResults()}</div></div>`}
-function searchResults(){if(!filter.trim())return empty('Escribe un código para buscar sus pallets y ubicaciones.');if(warehouse==='CENTRAL')return deliveredRows();const ps=activePallets().filter(searchMatch);return `<p class="sub">${ps.length} pallets físicos · ${num(ps.reduce((s,p)=>s+p.items.length,0))} líneas de material</p>${palletRows(ps)}`}
+function searchMatch(p){
+ return (!warehouse||p.warehouse===warehouse)&&p.items.some(i=>{const material=product(i.product);return material&&matchesMaterial(material.code,material.name)})&&locationMatches(p.location);
+}
+function search(){return `<div class="card"><div class="row material-filters"><label>Código o descripción<input value="${esc(filter)}" id="query" placeholder="Ej. 1804502 o F-436" oninput="filter=this.value;refreshSearch()"></label><label>Bodega${selectWh('wh')}</label><label>Tipo de ubicación<select onchange="rackSearch.type=this.value;render()">${[['','Todas'],['Piso','Solo piso'],['Rack','Solo racks']].map(([v,l])=>`<option value="${v}" ${rackSearch.type===v?'selected':''}>${l}</option>`).join('')}</select></label>${rackSearchFields()}<button id="search-filtered-export" onclick="csv(true)" ${!filter.trim()||warehouse==='CENTRAL'?'disabled':''}>CSV filtrado de mis bodegas</button><button onclick="csv()">CSV de todas mis bodegas</button></div><p class="small">${warehouse==='CENTRAL'?'Entregas a Bodega Central: consulta cerrada. Su descarga se hace en Movimientos → Entregas a Bodega Central.':'Un pallet mixto aparece al buscar cualquiera de sus materiales. Se muestra todo su contenido.'}</p><div id="results">${searchResults()}</div></div>`}
+function searchResults(){if(!filter.trim())return empty('Escribe un código o descripción para buscar sus pallets y ubicaciones.');if(warehouse==='CENTRAL')return deliveredRows();const ps=activePallets().filter(searchMatch);return `<p class="sub">${ps.length} pallets físicos · ${num(ps.reduce((s,p)=>s+p.items.length,0))} líneas de material</p>${palletRows(ps)}`}
 function refreshSearch(){$('#results').innerHTML=searchResults();$('#search-filtered-export').disabled=!filter.trim()||warehouse==='CENTRAL'}
 function palletDetail(id){
  const p=db.pallets.find(p=>p.id===id);
@@ -344,7 +446,7 @@ function filteredMovements(){const f=movementFilters,start=f.from?new Date(f.fro
 function setMovementFilter(key,value){const next={...movementFilters,[key]:value};if(next.from&&next.to&&next.from>next.to){alert('La fecha Desde no puede ser posterior a Hasta.');render();return}movementFilters=next;render()}
 function resetMovementFilters(){movementFilters={type:'',from:'',to:'',warehouse:'',material:''};render()}
 function refreshMovementMaterial(value){movementFilters.material=value;$('#movement-results').innerHTML=movementResults()}
-function movementResults(){if(!movementFilters.type)return empty('Elige un tipo de movimiento.');const ms=filteredMovements();return `<p class="sub">${num(ms.length)} líneas · ${new Set(ms.map(m=>m.operationId||m.id)).size} operaciones · ${new Set(ms.map(m=>m.palletId||m.pallet)).size} pallets físicos · ${num(ms.reduce((s,m)=>s+m.units,0))} unidades en movimientos</p>${ms.length?`<div class="scroll"><table><thead><tr><th>Operación</th><th>Fecha y hora</th><th>Movimiento</th><th>Pallet</th><th>Material</th><th>Unidades</th><th>Origen</th><th>Destino</th><th>Detalle</th></tr></thead><tbody>${ms.map(m=>`<tr><td>${m.operationId?`<button class="operation-link" onclick="operationDialog('${esc(m.operationId)}')">${esc(m.operationId)}</button>`:'Anterior'}</td><td>${esc(new Date(m.date).toLocaleString('es-CL'))}</td><td>${isCentralDelivery(m)?badge('Entrega a Bodega Central','amber'):esc(m.type)}</td><td><b>${esc(m.pallet)}</b></td><td>${esc(m.code)}<br><span class="small">${esc(movementDescription(m))}</span></td><td>${num(m.units)}</td><td>${movementLocation(m.from)}</td><td>${isCentralDelivery(m)?'Bodega Central':movementLocation(m.to)}</td><td>${esc(m.note)}<br><span class="small">${esc(m.actor||'Operador principal')}</span></td></tr>`).join('')}</tbody></table></div>`:empty('No hay movimientos que coincidan con los filtros.')}`}
+function movementResults(){if(!movementFilters.type)return empty('Elige un tipo de movimiento.');const ms=filteredMovements();return `<p class="sub">${num(ms.length)} líneas · ${new Set(ms.map(m=>m.operationId||m.id)).size} operaciones · ${new Set(ms.map(m=>m.palletId||m.pallet)).size} pallets físicos · ${num(ms.reduce((s,m)=>s+m.units,0))} unidades en movimientos</p>${ms.length?`<div class="scroll"><table><thead><tr><th>Fecha y hora</th><th>Movimiento</th><th>Material</th><th>Unidades</th><th>Origen</th><th>Destino</th><th>Detalle</th></tr></thead><tbody>${ms.map(m=>`<tr><td>${esc(new Date(m.date).toLocaleString('es-CL'))}</td><td>${isCentralDelivery(m)?badge('Entrega a Bodega Central','amber'):esc(m.type)}</td><td>${esc(m.code)}<br><span class="small">${esc(movementDescription(m))}</span></td><td>${num(m.units)}</td><td>${movementLocation(m.from)}</td><td>${isCentralDelivery(m)?'Bodega Central':movementLocation(m.to)}</td><td>${esc(m.note)}<br><span class="small">${esc(m.actor||'Operador principal')}</span></td></tr>`).join('')}</tbody></table></div>`:empty('No hay movimientos que coincidan con los filtros.')}`}
 function movements(){const f=movementFilters;return `<section class="card"><div class="panel-heading"><div><span class="eyebrow">HISTORIAL</span><h2>Movimientos de inventario</h2></div><button class="primary" onclick="historyCsv()" ${!f.type?'disabled':''}>Descargar CSV filtrado</button></div><div class="movement-filters"><label>Tipo de movimiento<select onchange="setMovementFilter('type',this.value)">${[['','Elige un tipo de movimiento'],['all','Todos'],['central','Entregas a Bodega Central'],['internal','Traslados internos'],['initial','Registros iniciales'],['correction','Correcciones'],['reorder','Reacomodos de pila']].map(([v,l])=>`<option value="${v}" ${f.type===v?'selected':''}>${l}</option>`).join('')}</select></label><label>Desde<input type="date" value="${esc(f.from)}" onchange="setMovementFilter('from',this.value)"></label><label>Hasta<input type="date" value="${esc(f.to)}" onchange="setMovementFilter('to',this.value)"></label><label>Bodega de origen<select onchange="setMovementFilter('warehouse',this.value)"><option value="">Todas</option>${opts(orderedWarehouses().filter(w=>w!=='CENTRAL'),f.warehouse)}</select></label><label>Material<input value="${esc(f.material)}" placeholder="Código o descripción" oninput="refreshMovementMaterial(this.value)"></label></div><div class="movement-filter-note"><span>La descarga incluye exactamente los movimientos mostrados en esta tabla.</span><button onclick="resetMovementFilters()">Limpiar filtros</button></div><div id="movement-results">${movementResults()}</div></section>`}
 let alertFilter='';
 function alertCategory(p,stock){
@@ -369,7 +471,57 @@ function alertView(){
  const rows=db.products.map(p=>{const stock=total(p.id);return {p,stock,category:alertCategory(p,stock)}}).filter(r=>r.category&&(!alertFilter||r.category===alertFilter));
  return `<section class="card"><h2>Alertas de stock</h2><label>Cargar catálogo Excel<input type="file" accept=".xlsx,.csv,.tsv" onchange="startCatalogImport(this.files[0]);this.value=''"></label><button onclick="templateCsv()">Descargar plantilla</button><label>Categoría<select onchange="alertFilter=this.value;render()">${[['','Todas'],['Reposición','Reposición'],['Crítico','Críticos']].map(([v,l])=>`<option value="${v}" ${v===alertFilter?'selected':''}>${l}</option>`).join('')}</select></label><label><input type="checkbox" ${db.settings.includeCentral?'checked':''} onchange="commit(d=>d.settings.includeCentral=this.checked)"> Incluir Bodega Central</label>${rows.length?`<div class="scroll"><table><tr><th>Código</th><th>Descripción</th><th>Stock actual</th><th>Umbral de alerta</th><th>Alerta</th><th>Ubicaciones con stock</th></tr>${rows.map(({p,stock,category})=>`<tr><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${num(stock)} unidades</td><td>${num(category==='Crítico'?p.critical:(p.reorder??p.min))} unidades</td><td>${category}</td><td>${alertStockLocations(p.id)}</td></tr>`).join('')}</table></div>`:empty('Sin alertas para esta categoría.')}</section>`;
 }
-function settings(){return `<div class="card catalog-import"><div class="panel-heading"><div><span class="eyebrow">CATÁLOGO MAESTRO</span><h2>Importar materiales desde Excel</h2><p class="sub">Código y descripción, sin reescribirlos al inventariar.</p></div><button onclick="templateCsv()">Descargar plantilla CSV</button></div><label class="file-input">Selecciona Excel (.xlsx), CSV o TSV<input type="file" accept=".xlsx,.csv,.tsv" onchange="startCatalogImport(this.files[0]);this.value=''" /></label><p class="small">Vista previa y confirmación antes de guardar. Se lee la primera hoja visible de Excel. No se admite .xls antiguo. Los códigos deben almacenarse como texto para conservar sus ceros.</p></div><div class="grid"><div class="card"><h2>Bodegas</h2>${orderedWarehouses().map(w=>`<p>${esc(wh(w))} ${badge('Activa')}</p>`).join('')}<button onclick="addWh()">+ Agregar bodega</button></div><div class="card"><h2>Exportar inventario</h2><button onclick="csv()">Descargar inventario de mis bodegas CSV</button></div><div class="card"><h2>Integración futura</h2>${badge('NetSuite no conectado','amber')}<p>Identificadores estables para materiales, pallets y movimientos.</p><p class="small">Esta versión es local, para un operador y una ventana de trabajo.</p></div></div>`}
+function erpDialog(){
+ openModal(`<h2>Actualizar códigos ERP</h2><p>Prepara un Excel con dos columnas: Código anterior y Código nuevo. Guarda ambos códigos como texto.</p><label>Archivo de equivalencias<input type="file" accept=".xlsx,.csv,.tsv" onchange="previewErp(this)"></label><div id="erp-preview"></div>`);
+}
+function erpChanges(rows,data){
+ const key=value=>String(value??'').trim().toLowerCase();
+ const filled=rows.map(row=>row.map(value=>String(value??'').trim())).filter(row=>row.some(Boolean));
+ const [header,...body]=filled;
+ const headers=(header||[]).map(value=>key(value).normalize('NFD').replace(/[\u0300-\u036f]/g,''));
+ const old=headers.indexOf('codigo anterior'), next=headers.indexOf('codigo nuevo');
+ if(old<0||next<0||headers.filter(Boolean).length!==2||!body.length)throw Error('El archivo debe contener Código anterior y Código nuevo y al menos una equivalencia.');
+ const catalog=new Map(data.products.map(p=>[key(p.code),p]));
+ const sources=new Set(), targets=new Set();
+ return body.map((row,i)=>{
+  const before=key(row[old]), code=row[next], after=key(code);
+  const material=catalog.get(before);
+  if(!before||!after||code.length>80||row.some((value,j)=>value&&j!==old&&j!==next))throw Error('Equivalencia '+(i+1)+' incompleta o inválida.');
+  if(!material)throw Error('Código anterior desconocido: '+row[old]);
+  if(sources.has(before)||targets.has(after))throw Error('Código repetido en la equivalencia '+(i+1)+'.');
+  if(catalog.has(after)&&catalog.get(after).id!==material.id)throw Error('El código nuevo ya pertenece a otro material: '+code);
+  sources.add(before);targets.add(after);
+  return {material,code};
+ });
+}
+async function previewErp(input){
+ const preview=$('#erp-preview'),file=input.files[0];
+ preview.replaceChildren();
+ if(!file)return;
+ try{
+  if(file.size>10*1024*1024)throw Error('El archivo supera 10 MB.');
+  const rows=/\.xlsx$/i.test(file.name)?(await readXlsx(await file.arrayBuffer(),true)).rows:
+   /\.(csv|tsv)$/i.test(file.name)?parseCsv(await file.text()):null;
+  if(!rows)throw Error('Selecciona un archivo Excel .xlsx, CSV o TSV.');
+  if(!input.isConnected||input.files[0]!==file)return;
+  const changes=erpChanges(rows,db);
+  const revision=db.revision;
+  const counts=new Map();
+  for(const pallet of db.pallets){
+   for(const id of new Set(pallet.items.map(item=>item.product)))counts.set(id,(counts.get(id)||0)+1);
+  }
+  preview.innerHTML=`<p>${changes.length} equivalencias válidas.</p><div class="scroll"><table><tr><th>Código anterior</th><th>Código nuevo</th><th>Descripción</th><th>Pallets</th></tr>${changes.map(({material,code})=>`<tr><td>${esc(material.code)}</td><td>${esc(code)}</td><td>${esc(material.name)}</td><td>${counts.get(material.id)||0}</td></tr>`).join('')}</table></div><button type="button" class="primary">Aplicar cambios</button>`;
+  preview.querySelector('button').onclick=()=>{
+   if(commit(data=>{
+    if(data.revision!==revision)throw Error('El catálogo cambió. Vuelve a cargar el archivo.');
+    for(const {material,code} of erpChanges(rows,data))material.code=code;
+   })){closeModal();toast(changes.length+' códigos ERP actualizados');}
+  };
+ }catch(error){
+  if(input.isConnected&&input.files[0]===file)preview.textContent=error.message;
+ }
+}
+function settings(){return `<div class="card catalog-import"><div class="panel-heading"><div><span class="eyebrow">CATÁLOGO MAESTRO</span><h2>Importar materiales desde Excel</h2><p class="sub">Código y descripción, sin reescribirlos al inventariar.</p></div><div><button onclick="templateCsv()">Descargar plantilla CSV</button> <button onclick="erpDialog()">Actualizar códigos ERP</button></div></div><label class="file-input">Selecciona Excel (.xlsx), CSV o TSV<input type="file" accept=".xlsx,.csv,.tsv" onchange="startCatalogImport(this.files[0]);this.value=''" /></label><p class="small">Vista previa y confirmación antes de guardar. Se lee la primera hoja visible de Excel. No se admite .xls antiguo. Los códigos deben almacenarse como texto para conservar sus ceros.</p></div><div class="grid"><div class="card"><h2>Bodegas</h2>${orderedWarehouses().map(w=>`<p>${esc(wh(w))} ${badge('Activa')}</p>`).join('')}<button onclick="addWh()">+ Agregar bodega</button></div><div class="card"><h2>Exportar inventario</h2><button onclick="csv()">Descargar inventario de mis bodegas CSV</button></div><div class="card"><h2>Integración futura</h2>${badge('NetSuite no conectado','amber')}<p>Identificadores estables para materiales, pallets y movimientos.</p><p class="small">Esta versión es local, para un operador y una ventana de trabajo.</p></div></div>`}
 function openModal(html){$('#modal').classList?.remove('move-map-modal');$('#modal').innerHTML=html;$('#modal').showModal()}function closeModal(){$('#modal').close()}function buttons(text){return `<div class="row"><button type="button" onclick="closeModal()">Cancelar</button><button class="primary">${text}</button></div>`}
 function productDialog(id=''){const p=product(id)||{code:'',name:'',min:0};openModal(`<h2>${id?'Editar':'Crear'} material</h2><form onsubmit="saveProduct(event,'${id}')"><label>Código<input name="code" required maxlength="80" value="${esc(p.code)}"></label><label>Descripción, medida, hilos y acabado<input name="name" required maxlength="250" value="${esc(p.name)}"></label><label>Mínimo en unidades (0 = sin alerta)<input name="min" type="text" inputmode="numeric" pattern="[0-9]+" min="0" step="1" required value="${p.min}"></label>${buttons('Guardar material')}</form>`)}
 function saveProduct(e,id){e.preventDefault();const f=new FormData(e.target),code=f.get('code').trim(),name=f.get('name').trim(),min=Number(f.get('min'));if(!code||!name)return alert('Completa código y descripción.');if(commit(d=>{if(d.products.some(p=>p.code.toLowerCase()===code.toLowerCase()&&p.id!==id))throw Error('Ese código ya existe');if(id)Object.assign(d.products.find(p=>p.id===id),{code,name,min});else d.products.push({id:uid(),code,name,min,externalId:null})})){closeModal();toast('Material guardado')}}
@@ -427,7 +579,7 @@ function download(name,text,type){const a=document.createElement('a'),u=URL.crea
 
 function csvCell(v){let s=String(v??'');if(/^[\s]*[=+\-@]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"'}function exportRows(name,rows){download(name,'\uFEFF'+rows.map(r=>r.map(csvCell).join(';')).join('\r\n'),'text/csv;charset=utf-8')}
 function csvActive(){csv()}
-function csv(filtered=false){if(filtered&&!filter.trim())return alert('Escribe un código para descargar los resultados filtrados.');if(filtered&&warehouse==='CENTRAL')return alert('Las entregas se descargan desde Movimientos → Entregas a Bodega Central.');const ps=activePallets().filter(p=>!filtered||searchMatch(p));exportRows(filtered?'Nexora-inventario-filtrado.csv':'Nexora-inventario-bodegas.csv',[['Pallet','ID estable','Código material','Descripción','Unidades','Bodega','Ubicación','Tipo','Altura','Conteo','Materiales en pallet','Observaciones'],...ps.flatMap(p=>p.items.map(i=>[p.label,p.id,product(i.product)?.code,product(i.product)?.name,i.units,p.warehouse,place(p),db.locations.find(l=>l.id===p.location)?.type||'',p.height||'',p.count,p.items.length,p.note]))])}
+function csv(filtered=false){if(filtered&&!filter.trim())return alert('Escribe un código o descripción para descargar los resultados filtrados.');if(filtered&&warehouse==='CENTRAL')return alert('Las entregas se descargan desde Movimientos → Entregas a Bodega Central.');const ps=activePallets().filter(p=>!filtered||searchMatch(p));exportRows(filtered?'Nexora-inventario-filtrado.csv':'Nexora-inventario-bodegas.csv',[['Pallet','ID estable','Código material','Descripción','Unidades','Bodega','Ubicación','Tipo','Altura','Conteo','Materiales en pallet','Observaciones'],...ps.flatMap(p=>p.items.map(i=>[p.label,p.id,product(i.product)?.code,product(i.product)?.name,i.units,p.warehouse,place(p),db.locations.find(l=>l.id===p.location)?.type||'',p.height||'',p.count,p.items.length,p.note]))])}
 function historyCsv(){if(!movementFilters.type)return;const ms=filteredMovements();exportRows(movementFilters.type==='central'?'Nexora-entregas-a-Marcos.csv':'Nexora-movimientos-filtrados.csv',[['Operación','ID movimiento','Fecha y hora','Fecha ISO','Tipo','Pallet','Código','Descripción','Unidades','Ubicación de origen','Destino','Motivo','Operador'],...ms.map(m=>[m.operationId||'Anterior',m.id,new Date(m.date).toLocaleString('es-CL'),m.date,isCentralDelivery(m)?'Entrega a Bodega Central':m.type,m.pallet,m.code,movementDescription(m),m.units,m.from,isCentralDelivery(m)?'Bodega Central':m.to,m.note,m.actor||'Operador principal'])])}
 
 let catalogImport=null;
@@ -436,7 +588,7 @@ function normalizedHeader(s){return String(s).normalize('NFD').replace(/[\u0300-
 function parseCsv(text){text=text.replace(/^\uFEFF/,'');const line=text.split(/\r?\n/).find(l=>l.trim())||'';const scores=[';',',','\t'].map(delim=>({delim,n:(line.match(new RegExp(delim==='\t'?'\t':'\\'+delim,'g'))||[]).length}));const delimiter=scores.sort((a,b)=>b.n-a.n)[0].delim;const rows=[];let row=[],v='',quoted=false;for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){v+='"';i++}else if(quoted||v==='')quoted=!quoted;else v+=c}else if(c===delimiter&&!quoted){row.push(v);v=''}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&text[i+1]==='\n')i++;row.push(v);rows.push(row);row=[];v=''}else v+=c}if(quoted)throw Error('El CSV contiene comillas sin cerrar');if(v!==''||row.length){row.push(v);rows.push(row)}return rows}
 const nodes=(el,name)=>Array.from(el.getElementsByTagNameNS('*',name));
 function xmlDoc(text){const doc=new DOMParser().parseFromString(text,'application/xml');if(nodes(doc,'parsererror').length)throw Error('El Excel contiene XML inválido');return doc}
-async function readXlsx(buffer){if(typeof JSZip==='undefined')throw Error('No se pudo iniciar el lector de Excel. Vuelve a abrir este HTML.');const zip=await JSZip.loadAsync(buffer);let expanded=0;for(const entry of Object.values(zip.files)){expanded+=entry._data?.uncompressedSize||0;if(expanded>50*1024*1024)throw Error('Excel demasiado grande al descomprimir (máximo 50 MB)')}const get=async path=>{const f=zip.file(path);return f?xmlDoc(await f.async('string')):null};const workbook=await get('xl/workbook.xml'),rels=await get('xl/_rels/workbook.xml.rels');if(!workbook||!rels)throw Error('El archivo no es un Excel .xlsx válido');const sheets=nodes(workbook,'sheet');if(!sheets.length)throw Error('Excel sin hojas');const first=sheets.find(s=>s.getAttribute('state')!=='hidden')||sheets[0],rid=first.getAttribute('r:id')||first.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');const rel=nodes(rels,'Relationship').find(r=>r.getAttribute('Id')===rid);if(!rel||rel.getAttribute('TargetMode')==='External')throw Error('No se pudo leer la hoja de Excel');let target=rel.getAttribute('Target');target=target.startsWith('/')?target.slice(1):'xl/'+target;const parts=[];for(const p of target.split('/')){if(p==='..')parts.pop();else if(p!=='.')parts.push(p)}target=parts.join('/');const sheet=await get(target);if(!sheet)throw Error('Hoja no encontrada');const sharedDoc=await get('xl/sharedStrings.xml'),shared=sharedDoc?nodes(sharedDoc,'si').map(si=>nodes(si,'t').map(t=>t.textContent).join('')):[];const style=await get('xl/styles.xml');const formats={};if(style)nodes(style,'numFmt').forEach(n=>formats[n.getAttribute('numFmtId')]=n.getAttribute('formatCode'));const xfs=style?nodes(style,'cellXfs')[0]:null,styles=xfs?nodes(xfs,'xf').map(x=>formats[x.getAttribute('numFmtId')]||''):[];const rows=[];for(const r of nodes(sheet,'row')){if(rows.length>=50000)throw Error('Máximo 50.000 filas por importación');const arr=[];for(const c of nodes(r,'c')){const ref=c.getAttribute('r')||'',letters=(ref.match(/^[A-Z]+/)||[])[0];if(!letters)continue;let col=0;for(const char of letters)col=col*26+char.charCodeAt(0)-64;col--;if(col>1000)throw Error('La hoja tiene demasiadas columnas');const t=c.getAttribute('t'),v=nodes(c,'v')[0]?.textContent||'';let val=t==='s'?shared[Number(v)]??'':t==='inlineStr'?nodes(c,'t').map(t=>t.textContent).join(''):v;if(!t||t==='n'){const fmt=styles[Number(c.getAttribute('s')||0)];if(/^0+$/.test(fmt)&&/^\d+$/.test(v))val=v.padStart(fmt.length,'0')}if(t==='e')val='#ERROR_EXCEL';arr[col]=String(val)}rows.push(arr)}return {rows,sheet:first.getAttribute('name')}}
+async function readXlsx(buffer,textOnly=false){if(typeof JSZip==='undefined')throw Error('No se pudo iniciar el lector de Excel. Vuelve a abrir este HTML.');const zip=await JSZip.loadAsync(buffer);let expanded=0;for(const entry of Object.values(zip.files)){expanded+=entry._data?.uncompressedSize||0;if(expanded>50*1024*1024)throw Error('Excel demasiado grande al descomprimir (máximo 50 MB)')}const get=async path=>{const f=zip.file(path);return f?xmlDoc(await f.async('string')):null};const workbook=await get('xl/workbook.xml'),rels=await get('xl/_rels/workbook.xml.rels');if(!workbook||!rels)throw Error('El archivo no es un Excel .xlsx válido');const sheets=nodes(workbook,'sheet');if(!sheets.length)throw Error('Excel sin hojas');const first=sheets.find(s=>s.getAttribute('state')!=='hidden')||sheets[0],rid=first.getAttribute('r:id')||first.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');const rel=nodes(rels,'Relationship').find(r=>r.getAttribute('Id')===rid);if(!rel||rel.getAttribute('TargetMode')==='External')throw Error('No se pudo leer la hoja de Excel');let target=rel.getAttribute('Target');target=target.startsWith('/')?target.slice(1):'xl/'+target;const parts=[];for(const p of target.split('/')){if(p==='..')parts.pop();else if(p!=='.')parts.push(p)}target=parts.join('/');const sheet=await get(target);if(!sheet)throw Error('Hoja no encontrada');const sharedDoc=await get('xl/sharedStrings.xml'),shared=sharedDoc?nodes(sharedDoc,'si').map(si=>nodes(si,'t').map(t=>t.textContent).join('')):[];const style=await get('xl/styles.xml');const formats={};if(style)nodes(style,'numFmt').forEach(n=>formats[n.getAttribute('numFmtId')]=n.getAttribute('formatCode'));const xfs=style?nodes(style,'cellXfs')[0]:null,styles=xfs?nodes(xfs,'xf').map(x=>formats[x.getAttribute('numFmtId')]||''):[];const rows=[];for(const r of nodes(sheet,'row')){if(rows.length>=50000)throw Error('Máximo 50.000 filas por importación');const arr=[];for(const c of nodes(r,'c')){const ref=c.getAttribute('r')||'',letters=(ref.match(/^[A-Z]+/)||[])[0];if(!letters)continue;let col=0;for(const char of letters)col=col*26+char.charCodeAt(0)-64;col--;if(col>1000)throw Error('La hoja tiene demasiadas columnas');const t=c.getAttribute('t'),v=nodes(c,'v')[0]?.textContent||'';let val=t==='s'?shared[Number(v)]??'':t==='inlineStr'?nodes(c,'t').map(t=>t.textContent).join(''):v;if(!t||t==='n'){const fmt=styles[Number(c.getAttribute('s')||0)];if(/^0+$/.test(fmt)&&/^\d+$/.test(v))val=v.padStart(fmt.length,'0')}if(t==='e')val='#ERROR_EXCEL';if(textOnly&&val&&(!['s','inlineStr'].includes(t)||nodes(c,'f').length))throw Error('Usa celdas de texto sin fórmulas en '+ref);arr[col]=String(val)}rows.push(arr)}return {rows,sheet:first.getAttribute('name')}}
 async function startCatalogImport(file){if(!file)return;try{if(file.size>10*1024*1024)throw Error('El archivo supera 10 MB');let rows,sheet='CSV';if(/\.xlsx$/i.test(file.name)){const r=await readXlsx(await file.arrayBuffer());rows=r.rows;sheet=r.sheet}else if(/\.(csv|tsv)$/i.test(file.name)){rows=parseCsv(await file.text())}else throw Error('Usa Excel .xlsx o CSV. Para .xls antiguo, guarda primero como .xlsx.');const first=rows.findIndex(r=>r.some(v=>String(v||'').trim()));if(first<0)throw Error('El archivo está vacío');const headers=rows[first].map(v=>String(v||'').trim()),body=rows.slice(first+1).filter(r=>r.some(v=>String(v||'').trim()));if(!body.length)throw Error('No hay materiales debajo de los encabezados');catalogImport={headers,rows:body,file:file.name,sheet,code:Math.max(0,headers.findIndex(v=>['codigo','codigomaterial','sku','code','itemcode'].includes(normalizedHeader(v)))),description:headers.findIndex(v=>['descripcion','description','material','nombre'].includes(normalizedHeader(v)))};if(catalogImport.description<0)catalogImport.description=headers.length>1?1:0;showCatalogImport()}catch(e){alert('No se importó el catálogo: '+e.message)}}
 function mappedCatalog(){const imp=catalogImport;if(!imp||imp.code===imp.description)throw Error('Elige columnas distintas para código y descripción');const seen=new Set();return imp.rows.map((r,i)=>{const code=String(r[imp.code]??'').trim(),name=String(r[imp.description]??'').trim();if(!code||!name)throw Error('Fila '+(i+2)+': falta código o descripción');if(code.length>80||name.length>250)throw Error('Fila '+(i+2)+': código o descripción demasiado largo');if(code==='#ERROR_EXCEL'||name==='#ERROR_EXCEL'||/^\d+(?:\.\d+)?[eE][+-]?\d+$/.test(code))throw Error('Fila '+(i+2)+': código no válido. En Excel guarda los códigos como Texto.');const key=code.toLowerCase();if(seen.has(key))throw Error('Código duplicado en el archivo: '+code);seen.add(key);const threshold=names=>{
  const col=imp.headers.findIndex(h=>names.includes(normalizedHeader(h)));
